@@ -55,6 +55,7 @@ scrape(options).then((result) => {});
 * [defaultFilename](#defaultfilename) - filename for index page
 * [prettifyUrls](#prettifyurls) - prettify urls
 * [ignoreErrors](#ignoreerrors) - whether to ignore errors on resource downloading
+* [reliableReferences](#reliablereferences) - guarantee local references point only to successfully saved resources
 * [urlFilter](#urlfilter) - skip some urls
 * [filenameGenerator](#filenamegenerator) - generate filename for downloaded resource
 * [requestConcurrency](#requestconcurrency) - set maximum concurrent requests
@@ -161,6 +162,17 @@ Boolean, whether urls should be 'prettified', by having the `defaultFilename` re
 #### ignoreErrors
 Boolean, if `true` scraper will continue downloading resources after error occurred, if `false` - scraper will finish process and return error. Defaults to `false`.
 Errors thrown by plugin actions while handling a resource (including [onResourceSaved](#onresourcesaved)) are treated the same way.
+
+#### reliableReferences
+Boolean, if `true` local references in saved files are guaranteed to point only to successfully saved resources. Defaults to `false`.
+
+When enabled:
+* references to resources which were not saved (failed to download, parse or write, or skipped by [urlFilter](#urlfilter) or [maxDepth](#maxdepth)) are replaced with absolute urls, resolved against the url of the page containing them (url fragments are preserved). This applies to html attributes selected by [sources](#sources), `srcset` and css references (both in html files and in css files);
+* it works only with the built-in plugins for saving resources and generating references. If a custom plugin registers a `saveResource` or `getReference` action, an error is thrown before any i/o is done;
+* with [ignoreErrors](#ignoreerrors) set to `true` resources which failed to be parsed or written are not retried: their leftover files are removed and all saved files referencing them are corrected to use absolute urls and rewritten (a failed rewrite is handled the same way as a failed save). If cleanup of a failed resource fails, scraping is rejected. [onResourceSaved](#onresourcesaved) is called exactly once for each successfully saved resource, after all references are stabilized;
+* with `ignoreErrors` set to `false` error handling works the same way as in default mode: scraping is rejected and the output directory is removed.
+
+Resources shared by multiple pages, redirects and circular dependencies are handled consistently and are not re-fetched during correction.
 
 #### urlFilter
 Function which is called for each url to check whether it should be scraped. Defaults to `null` - no url filter will be applied.
@@ -354,6 +366,8 @@ Parameters - object which includes:
 * resource - [Resource](https://github.com/website-scraper/node-website-scraper/blob/master/lib/resource.js) object
 
 Scraper ignores the result returned from this action. It doesn't wait for the action before saving other resources, but it waits for all pending onResourceSaved and onResourceError actions before running afterFinish and resolving `scrape()`. If the action throws or rejects, it is handled like any other resource error: [onResourceError](#onresourceerror) is called for the resource, and if [ignoreErrors](#ignoreerrors) is `false` `scrape()` is rejected with this error. Since scraper doesn't wait for this action, the rejection happens after all resources are downloaded and pending actions are finished, not immediately.
+
+With [reliableReferences](#reliablereferences) and [ignoreErrors](#ignoreerrors) enabled this action is deferred: it is called exactly once for each successfully saved resource after all references are stabilized.
 ```javascript
 registerAction('onResourceSaved', ({resource}) => console.log(`Resource ${resource.url} saved!`));
 ```
@@ -428,6 +442,12 @@ registerAction('saveResource', async ({resource}) => {
   await saveItSomewhere(filename, text);
 });
 ```
+
+##### removeResource
+Action removeResource is called to remove a previously saved resource from the storage. It is used by [reliableReferences](#reliablereferences) mode to delete leftover files of resources which failed to save. Registered by default by [SaveResourceToFileSystemPlugin](https://github.com/website-scraper/node-website-scraper/blob/master/lib/plugins/save-resource-to-fs-plugin.js).
+
+Parameters - object which includes:
+* resource - [Resource](https://github.com/website-scraper/node-website-scraper/blob/master/lib/resource.js) object
 
 ## result
 Array of [Resource](https://github.com/website-scraper/node-website-scraper/blob/master/lib/resource.js) objects containing:

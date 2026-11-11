@@ -362,4 +362,65 @@ describe('Scraper initialization', function () {
 			s.actions.generateFilename.length.should.eql(1);
 		});
 	});
+
+	describe('reliableReferences', () => {
+		class CustomSavePlugin {
+			apply (addAction) {
+				addAction('saveResource', () => {});
+			}
+		}
+
+		class CustomReferencePlugin {
+			apply (addAction) {
+				addAction('getReference', () => ({reference: 'custom'}));
+			}
+		}
+
+		it('should throw if saveResource action is replaced by custom plugin', () => {
+			(() => new Scraper({
+				urls: 'http://example.com',
+				directory: testDirname,
+				reliableReferences: true,
+				plugins: [new CustomSavePlugin()]
+			})).should.throw(/reliableReferences/);
+		});
+
+		it('should throw if getReference action is replaced by custom plugin', () => {
+			(() => new Scraper({
+				urls: 'http://example.com',
+				directory: testDirname,
+				reliableReferences: true,
+				plugins: [new CustomReferencePlugin()]
+			})).should.throw(/reliableReferences/);
+		});
+
+		it('should not throw for other custom actions', () => {
+			class CustomNotificationsPlugin {
+				apply (addAction) {
+					addAction('onResourceSaved', () => {});
+				}
+			}
+
+			const s = new Scraper({
+				urls: 'http://example.com',
+				directory: testDirname,
+				reliableReferences: true,
+				plugins: [new CustomNotificationsPlugin()]
+			});
+
+			s.actions.saveResource.length.should.eql(1);
+			s.actions.getReference.length.should.eql(1);
+		});
+
+		it('should not throw for replaced actions if reliableReferences is disabled', () => {
+			const s = new Scraper({
+				urls: 'http://example.com',
+				directory: testDirname,
+				plugins: [new CustomSavePlugin(), new CustomReferencePlugin()]
+			});
+
+			s.actions.saveResource.length.should.eql(1);
+			s.actions.getReference.length.should.eql(1);
+		});
+	});
 });
